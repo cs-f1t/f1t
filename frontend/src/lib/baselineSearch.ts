@@ -3,6 +3,10 @@ const baselineApiBaseUrl = normalizeLocalApiBaseUrl(
 )
 const TEXT_SEARCH_TIMEOUT_MS = 75_000
 const IMAGE_SEARCH_TIMEOUT_MS = 180_000
+const API_WARMUP_TIMEOUT_MS = 20_000
+const RETRYABLE_SEARCH_STATUS_CODES = new Set([502, 503, 504])
+
+let baselineWarmupPromise: Promise<void> | null = null
 
 export type BaselineSearchResult = {
   rank: number
@@ -110,10 +114,36 @@ export function hasBaselineSearchConfig() {
   return Boolean(baselineApiBaseUrl)
 }
 
+export function warmBaselineSearch() {
+  if (!baselineApiBaseUrl) {
+    return Promise.resolve()
+  }
+
+  if (!baselineWarmupPromise) {
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      API_WARMUP_TIMEOUT_MS,
+    )
+
+    baselineWarmupPromise = fetch(`${baselineApiBaseUrl}/health`, {
+      signal: controller.signal,
+    })
+      .then(() => undefined)
+      .catch(() => undefined)
+      .finally(() => window.clearTimeout(timeoutId))
+  }
+
+  return baselineWarmupPromise
+}
+
 export type ProviderModels = Record<string, string>
 
 export async function fetchProviderModels(): Promise<ProviderModels> {
   if (!baselineApiBaseUrl) return {}
+
+  await warmBaselineSearch()
+
   try {
     const res = await fetch(`${baselineApiBaseUrl.replace(/\/$/, '')}/models`)
     if (!res.ok) return {}
@@ -152,57 +182,65 @@ export async function searchBaseline({
     throw new Error('VITE_API_BASE_URL is not configured.')
   }
 
-  const formData = new FormData()
+  await warmBaselineSearch()
+
   const trimmedQuery = query.trim()
-
-  if (trimmedQuery) {
-    formData.append('query', trimmedQuery)
-  }
-
-  if (image) {
-    formData.append('image', image)
-  }
-
-  formData.append('top_k', String(topK))
-
-  if (table) {
-    formData.append('table', table)
-  }
-
-  if (category2) {
-    formData.append('category2', category2)
-  }
-
-  if (category2Keyword) {
-    formData.append('category2_keyword', category2Keyword)
-  }
-
-  if (provider) {
-    formData.append('provider', provider)
-  }
-
-  const controller = new AbortController()
   const timeoutMs = image ? IMAGE_SEARCH_TIMEOUT_MS : TEXT_SEARCH_TIMEOUT_MS
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
-  let response: Response
 
-  try {
-    response = await fetch(`${baselineApiBaseUrl.replace(/\/$/, '')}/search`, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
-    })
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(
-        '검색 시간이 오래 걸리고 있습니다. 잠시 후 다시 시도해 주세요.',
-        { cause: error },
-      )
+  function createFormData() {
+    const formData = new FormData()
+
+    if (trimmedQuery) formData.append('query', trimmedQuery)
+    if (image) formData.append('image', image)
+
+    formData.append('top_k', String(topK))
+
+    if (table) formData.append('table', table)
+    if (category2) formData.append('category2', category2)
+    if (category2Keyword) {
+      formData.append('category2_keyword', category2Keyword)
+    }
+    if (provider) formData.append('provider', provider)
+
+    return formData
+  }
+
+  let response: Response | null = null
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+
+    try {
+      response = await fetch(`${baselineApiBaseUrl}/search`, {
+        method: 'POST',
+        body: createFormData(),
+        signal: controller.signal,
+      })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error(
+          '검색 시간이 오래 걸리고 있습니다. 잠시 후 다시 시도해 주세요.',
+          { cause: error },
+        )
+      }
+
+      if (attempt === 0) {
+        continue
+      }
+
+      throw error
+    } finally {
+      window.clearTimeout(timeoutId)
     }
 
-    throw error
-  } finally {
-    window.clearTimeout(timeoutId)
+    if (!RETRYABLE_SEARCH_STATUS_CODES.has(response.status) || attempt === 1) {
+      break
+    }
+  }
+
+  if (!response) {
+    throw new Error('검색 서버에 연결하지 못했습니다.')
   }
 
   if (!response.ok) {

@@ -15,7 +15,7 @@ load_pipeline_env()
 
 
 class SupabaseVectorSearchClient:
-    """Supabase pgvector RPC client for CLIP text-to-image retrieval."""
+    """Supabase pgvector RPC client for 768-dimensional Gemini retrieval."""
 
     def __init__(
         self,
@@ -38,9 +38,11 @@ class SupabaseVectorSearchClient:
 
     @staticmethod
     def _rpc_for_dim(dim: int) -> str:
-        if dim == 768:
-            return "match_fashion_items_768"
-        return "match_fashion_items"
+        if dim != 768:
+            raise ValueError(
+                f"Only 768-dimensional Gemini embeddings are supported; got {dim}."
+            )
+        return "match_fashion_items_768"
 
     def search(
         self,
@@ -78,7 +80,7 @@ class SupabaseVectorSearchClient:
                 body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
-            if exc.code == 404 or "PGRST202" in body or "match_fashion_items" in body:
+            if exc.code == 404 or "PGRST202" in body:
                 raise RuntimeError(
                     f"Supabase RPC {rpc}를 찾지 못했습니다. "
                     "배포 전에 Supabase SQL Editor에서 match_fashion_items_768 RPC를 "

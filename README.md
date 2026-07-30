@@ -9,6 +9,17 @@
   <img src="https://img.shields.io/badge/Supabase-pgvector-3ECF8E" alt="Supabase pgvector" />
 </p>
 
+## 🛠️ 기술 스택
+
+| 영역 | 기술 |
+| --- | --- |
+| Language | Python 3.11, TypeScript |
+| Generative AI · VLM | Gemini 3.5 Flash, Google Gen AI SDK |
+| Embedding · Retrieval | Gemini Embedding 2 (768차원), Cosine Similarity |
+| Database · Vector DB | Supabase, PostgreSQL, pgvector |
+| Backend | FastAPI, Uvicorn, Python Multipart |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4 |
+
 ---
 
 ## 👗 프로젝트 소개
@@ -19,6 +30,15 @@
 - **이미지 + 텍스트 검색:** 참고 이미지의 시각적 특징과 추가 요청을 통합하되, 두 정보가 충돌하면 사용자가 명시한 텍스트 조건을 우선합니다.
 - **19,833개 상품 검색:** 정형 메타데이터로 후보군을 먼저 줄인 뒤 임베딩 유사도로 순위를 계산합니다.
 - **VLM 과잉 추론 억제:** 모델이 언급되지 않은 속성을 임의로 채우지 않도록 ‘언급 속성 식별’과 ‘속성값 추출’을 분리했습니다.
+
+### 서비스 이용
+
+- 운영 프론트엔드: [https://f1t-clean-front.vercel.app/](https://f1t-clean-front.vercel.app/)
+- 프론트엔드 배포: Vercel
+- 검색 API 배포: Cloudtype
+- 상품·벡터 데이터베이스: Supabase PostgreSQL + pgvector
+
+홈 화면이 열리면 프론트엔드는 검색 API의 `/health`를 미리 호출해 백엔드를 준비시킵니다. 검색 시점에 네트워크나 게이트웨이의 일시 오류가 발생하면 읽기 전용 검색 요청을 한 번 재시도하고, API를 사용할 수 없을 때는 Supabase 카탈로그 검색으로 전환해 기본 결과를 제공합니다.
 
 ## 🏆 주요 결과
 
@@ -97,6 +117,32 @@ VLM에 모든 속성값을 한 번에 생성하게 하면 사용자가 말하지
 
 - 구현: [`pipeline/recommendation_service.py`](pipeline/recommendation_service.py), [`pipeline/retrieval/target_description_retrieval.py`](pipeline/retrieval/target_description_retrieval.py)
 
+검색은 추출된 조건에 따라 두 경로 중 하나를 사용합니다.
+
+| 경로 | 실행 조건 | 처리 방식 |
+| --- | --- | --- |
+| 메타데이터 우선 | 소매·기장·계절·핏처럼 정확히 비교할 속성이 있음 | Supabase REST로 후보를 좁힌 뒤 저장된 Gemini 벡터를 애플리케이션에서 재정렬 |
+| 벡터 RPC | 정확한 후보가 없거나 메타데이터 조회가 실패함 | PostgreSQL RPC `match_fashion_items_768`이 이미지 HNSW 후보를 찾고 최종 점수를 계산 |
+
+#### HNSW가 후보를 찾는 원리
+
+상품 이미지와 검색 문장은 각각 **768개의 숫자로 이루어진 한 점**으로 표현됩니다. 인덱스가 없다면 질문 하나마다 약 2만 개 상품과 768개 숫자를 전부 비교해야 합니다. HNSW는 비슷한 점끼리 연결한 그래프를 여러 층으로 만들어 이 전체 비교를 줄입니다.
+
+- 위층에는 멀리 이동하는 소수의 연결만 두어 검색 공간을 크게 건너뜁니다.
+- 아래층으로 내려갈수록 더 많은 상품과 촘촘하게 연결됩니다.
+- 각 층에서는 현재 위치보다 질문 벡터에 가까운 이웃으로 이동합니다.
+- 가장 아래층에서 가까운 후보를 모은 뒤, 정확한 코사인 유사도로 순서를 계산합니다.
+
+현재 RPC는 기본 Top 10 요청에서 테이블당 이미지 후보 50개를 탐색하고, 요청 결과 수가 커지면 후보를 최대 100개까지 늘립니다. 이 수는 HNSW 알고리즘의 고정 규칙이 아니라 프로젝트 함수에 정의된 값입니다.
+
+```text
+result_count    = 1~100 범위로 제한한 요청 결과 수
+candidate_count = clamp(result_count × 5, 최소 50, 최대 100)
+HNSW ef_search  = 100
+```
+
+`candidate_count`는 최종 재정렬에 남길 상품 수이고, `ef_search`는 HNSW가 내부에서 탐색할 수 있는 이웃 후보 폭입니다. 최종 응답에는 `result_count`개만 반환됩니다. 자세한 구현은 [`pipeline/README.md`](pipeline/README.md#hnsw-후보-검색과-재정렬)와 [`pipeline/sql/match_fashion_items_768.sql`](pipeline/sql/match_fashion_items_768.sql)에 정리했습니다.
+
 ### 5. 검색 근거를 보여주는 한국어 추천 이유
 
 최종 상품 목록만 반환하지 않고 원문 질의, 추출 속성, Target Description, 상품 정보를 함께 사용해 한국어 추천 이유를 생성합니다. 사용자는 어떤 조건이 상품 선택에 반영됐는지 결과 화면에서 확인할 수 있습니다.
@@ -124,16 +170,6 @@ VLM에 모든 속성값을 한 번에 생성하게 하면 사용자가 말하지
 | 김재혁 | Team Member | 상품 DB 구축·관리, 메타데이터 정리, 이미지·소재 임베딩 구축 |
 | 박주현 | Team Member | VLM 메타데이터 추출, 의도 기반 후보 필터링 설계, 프로젝트 진행 관리 |
 
-## 🛠️ 기술 스택
-
-| 영역 | 기술 |
-| --- | --- |
-| VLM · 생성 모델 | Gemini 3.5 Flash |
-| 임베딩 | Gemini Embedding 2 (768차원) |
-| 데이터베이스 | Supabase, PostgreSQL, pgvector |
-| 백엔드 | Python, FastAPI, Uvicorn |
-| 프론트엔드 | React, TypeScript, Vite, Tailwind CSS |
-
 ## 📁 저장소 구조
 
 ```text
@@ -142,8 +178,10 @@ f1t_clean_publish/
 ├── pipeline/
 │   ├── intent/                 # 자연어 의도 및 명시 속성 추출
 │   ├── retrieval/              # 후보 필터링과 임베딩 검색
+│   ├── sql/                    # Supabase RPC 기준 SQL
 │   ├── target_description/     # 검색 문장과 추천 이유 생성
-│   └── recommendation_service.py  # 전체 추천 파이프라인 오케스트레이션
+│   ├── recommendation_service.py  # 전체 추천 파이프라인 오케스트레이션
+│   └── vector_db_client.py     # 백엔드 전용 Supabase RPC 클라이언트
 └── frontend/                   # React 기반 검색·결과 화면
 ```
 

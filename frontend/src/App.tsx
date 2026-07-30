@@ -14,6 +14,7 @@ import {
   getBaselineImageUrl,
   hasBaselineSearchConfig,
   searchBaseline,
+  warmBaselineSearch,
 } from './lib/baselineSearch'
 import type { BaselineSearchResponse, ProviderModels } from './lib/baselineSearch'
 import type { CategoryRow } from './lib/supabaseRest'
@@ -338,21 +339,22 @@ function AboutPage() {
 
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-5">
           <h2 className="text-base font-semibold text-slate-950">
-            결과 후보 확인
+            AI 검색으로 후보 정렬
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            현재는 상품 DB를 기반으로 후보를 보여주며, 이후 검색 파이프라인과
-            연결해 요청에 맞는 결과를 더 정교하게 제공합니다.
+            이미지와 문장에서 검색 의도를 정리한 뒤, 상품의 시각적 특징과
+            속성을 함께 비교해 요청에 가까운 순서로 결과를 제공합니다.
           </p>
         </article>
       </div>
 
       <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-6">
-        <h2 className="text-lg font-semibold text-slate-950">현재 개발 범위</h2>
+        <h2 className="text-lg font-semibold text-slate-950">F1T 검색 방식</h2>
         <p className="mt-3 text-sm leading-6 text-slate-500">
-          이 화면은 프론트엔드 프로토타입입니다. Supabase 상품 DB를 불러와
-          카테고리 탐색과 검색 흐름을 확인할 수 있고, 실제 이미지 이해 및 추천
-          품질은 백엔드 파이프라인 연결 이후 고도화됩니다.
+          F1T는 Supabase 상품 데이터와 멀티모달 검색 파이프라인을 연결해
+          카테고리, 색상, 핏, 소재 같은 조건과 이미지의 분위기를 함께
+          해석합니다. 단순 키워드 일치에 그치지 않고 사용자가 설명한 의도와
+          가까운 상품을 찾아 비교할 수 있도록 돕습니다.
         </p>
       </div>
     </section>
@@ -562,6 +564,8 @@ function App() {
       Boolean(pipelineIntentLabel))
 
   useEffect(() => {
+    void warmBaselineSearch()
+
     fetchProviderModels().then((models) => {
       if (Object.keys(models).length > 0) {
         setProviderModels(models)
