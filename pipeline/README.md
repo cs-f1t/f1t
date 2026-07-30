@@ -208,3 +208,17 @@ perform set_config('hnsw.ef_search', '100', true);
 
 **3. 임베딩 빌드**:  
 배포 환경에서는 이미 구축된 Supabase 테이블과 RPC를 사용합니다. 임베딩 생성 스크립트와 실험 산출물은 이 배포용 스냅샷에서 제외했습니다.
+
+### 운영 DB 용량 정책
+
+세 상품 테이블에는 검색에 직접 사용하는 다음 두 벡터만 보관합니다.
+
+- `gemini_image_embedding_768`: 이미지 HNSW 후보 검색
+- `gemini_fabric_text_embedding_768`: 소재 조건이 있을 때 후보 재정렬
+
+실험이 끝난 CLIP/Qwen 벡터를 운영 테이블에 함께 유지하면 같은 상품을 여러 번 768차원 벡터로 저장하게 되어 데이터와 TOAST 영역이 크게 늘어납니다. 새 임베딩 모델을 비교할 때는 별도 실험 테이블에서 검증하고, 운영 전환 후에는 실제 검색 경로가 참조하는 벡터만 남깁니다.
+
+구형 벡터 정리 기준 SQL은 [`sql/drop_legacy_embedding_columns.sql`](sql/drop_legacy_embedding_columns.sql)에 있습니다. 컬럼 삭제 후 실제 파일 크기를 줄여야 할 때는 트래픽이 적은 시간에 테이블별 `VACUUM FULL`을 순차 실행합니다. 작업 중 대상 테이블이 잠기며, Supabase 대시보드의 사용량 표시는 일 단위 갱신 때문에 실제 DB 크기보다 늦게 바뀔 수 있습니다.
+
+- 용량 확인: `select pg_size_pretty(pg_database_size(current_database()));`
+- 무료 플랜 기준과 회수 방법: [Supabase Database Size](https://supabase.com/docs/guides/platform/database-size)
