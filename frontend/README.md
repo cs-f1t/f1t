@@ -2,6 +2,17 @@
 
 Vite/React 기반의 패션 검색 UI입니다. 백엔드 API는 저장소 루트에서 `uvicorn backend.api:app --host 0.0.0.0 --port 8000`로 실행합니다.
 
+운영 화면은 [https://f1t-clean-front.vercel.app/](https://f1t-clean-front.vercel.app/)에서 확인할 수 있습니다.
+
+## 검색 연결 방식
+
+1. 앱 진입 시 `/health`를 호출해 검색 백엔드를 미리 준비합니다.
+2. 텍스트나 이미지를 제출하면 `multipart/form-data`로 백엔드의 `/search`를 호출합니다.
+3. 일시적인 네트워크 오류 또는 `502`, `503`, `504` 응답에는 검색을 한 번만 재시도합니다.
+4. 백엔드 검색을 사용할 수 없으면 Supabase REST 카탈로그 검색이 기본 결과를 제공합니다.
+
+`VITE_SUPABASE_ANON_KEY`는 RLS가 적용된 공개용 키만 사용합니다. Supabase `service_role` 키와 Gemini API 키는 브라우저 번들에 포함하지 않고 백엔드 환경변수로만 관리합니다.
+
 ## 환경 설정
 
 프론트엔드 폴더에서 처음 한 번만 의존성을 설치하고 로컬 환경변수 파일을 만듭니다.
