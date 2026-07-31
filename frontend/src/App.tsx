@@ -309,52 +309,59 @@ function AboutPage() {
     <section>
       <p className="text-sm font-medium text-slate-500">About F1T</p>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
-        이미지와 말로 원하는 옷을 더 정확하게 찾습니다
+        머릿속에 그린 옷을 이미지와 말로 찾아보세요
       </h1>
       <p className="mt-5 text-base leading-7 text-slate-600">
-        F1T는 마음에 든 이미지나 자연스러운 문장을 바탕으로 색, 핏, 패턴,
-        소재, 활용 상황 등을 함께 반영해 패션 상품을 찾는 서비스입니다.
+        F1T는 자연어와 참고 이미지를 함께 이해해 사용자의 의도를 실제 패션
+        상품으로 연결하는 검색 서비스입니다. 찾고 싶은 옷을 평소 말하듯
+        설명하면 카테고리, 색상, 핏, 패턴, 소재와 입을 상황을 반영해 19,833개
+        상품 중 요청에 가까운 결과를 보여줍니다.
       </p>
 
       <div className="mt-10 grid gap-4 md:grid-cols-3">
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-5">
           <h2 className="text-base font-semibold text-slate-950">
-            이미지로 시작
+            문장으로 바로 검색
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            참고하고 싶은 옷 사진을 올리고, 비슷하게 유지할 부분을 기준으로
-            검색할 수 있습니다.
+            “출근할 때 입을 단정한 검은 셔츠”처럼 상품명을 몰라도 원하는
+            분위기와 조건을 자연스럽게 입력할 수 있습니다.
           </p>
         </article>
 
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-5">
           <h2 className="text-base font-semibold text-slate-950">
-            말로 조건 추가
+            이미지와 조건 결합
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            색을 바꾸거나, 패턴을 빼거나, 입을 상황을 더하는 식으로 원하는
-            조건을 편하게 입력할 수 있습니다.
+            마음에 든 옷 사진을 올리고 “비슷하지만 검은색으로”처럼 바꾸고
+            싶은 조건을 덧붙이면, 이미지의 특징과 문장의 요구를 함께
+            반영합니다.
           </p>
         </article>
 
         <article className="rounded-xl border border-slate-200 bg-slate-50 p-5">
           <h2 className="text-base font-semibold text-slate-950">
-            AI 검색으로 후보 정렬
+            가까운 상품과 이유 확인
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            이미지와 문장에서 검색 의도를 정리한 뒤, 상품의 시각적 특징과
-            속성을 함께 비교해 요청에 가까운 순서로 결과를 제공합니다.
+            상품의 속성과 시각적 의미를 함께 비교해 요청에 가까운 순서로
+            정렬하고, 어떤 조건이 추천에 반영됐는지도 결과에서 확인할 수
+            있습니다.
           </p>
         </article>
       </div>
 
       <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-6">
-        <h2 className="text-lg font-semibold text-slate-950">F1T 검색 방식</h2>
+        <h2 className="text-lg font-semibold text-slate-950">
+          키워드가 아니라 의도를 찾습니다
+        </h2>
         <p className="mt-3 text-sm leading-6 text-slate-500">
-          F1T는 Supabase 상품 데이터와 멀티모달 검색 파이프라인을 연결해
-          카테고리, 색상, 핏, 소재 같은 조건과 이미지의 분위기를 함께
-          해석합니다. 단순 키워드 일치에 그치지 않고 사용자가 설명한 의도와
-          가까운 상품을 찾아 비교할 수 있도록 돕습니다.
+          먼저 문장에서 직접 언급한 카테고리, 색상, 핏, 소재 등의 조건으로
+          검색 범위를 좁힙니다. 그다음 이미지와 문장의 의미를 상품 특징과
+          비교해 최종 순위를 정합니다. 참고 이미지와 문장이 다를 때는
+          사용자가 말로 지정한 조건을 우선해 원하는 변화가 결과에 반영되도록
+          설계했습니다.
         </p>
       </div>
     </section>
