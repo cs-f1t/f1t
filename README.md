@@ -107,7 +107,7 @@ flowchart LR
     H -- 후보 없음·오류 --> J
     I --> M
     L --> M
-    E -. 가중 랭킹 입력 .-> M
+    E -.-> O
 
     M -- 없음 --> N --> RESULT
     M -- 있음 --> O --> RESULT
