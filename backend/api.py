@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
+import tempfile
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -30,6 +33,40 @@ from pipeline.target_description.target_description_generation import (
 
 
 load_pipeline_env()
+
+logger = logging.getLogger(__name__)
+DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+def max_image_bytes_from_env() -> int:
+    raw_value = os.getenv("MAX_IMAGE_BYTES", str(DEFAULT_MAX_IMAGE_BYTES))
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logger.warning("Invalid MAX_IMAGE_BYTES=%r; using 8 MiB", raw_value)
+        return DEFAULT_MAX_IMAGE_BYTES
+    if value < 1:
+        logger.warning("MAX_IMAGE_BYTES must be positive; using 8 MiB")
+        return DEFAULT_MAX_IMAGE_BYTES
+    return value
+
+
+MAX_IMAGE_BYTES = max_image_bytes_from_env()
+
+
+def read_image_upload(upload: UploadFile) -> tuple[bytes, str]:
+    """Read a bounded image upload without exposing server memory to unbounded input."""
+    mime_type = upload.content_type or "image/jpeg"
+    if not mime_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="image must be an image file.")
+
+    image_bytes = upload.file.read(MAX_IMAGE_BYTES + 1)
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"image must be {MAX_IMAGE_BYTES // (1024 * 1024)} MB or smaller.",
+        )
+    return image_bytes, mime_type
 
 
 def parse_origins() -> list[str]:
@@ -75,8 +112,9 @@ def status_check(request: Request) -> dict:
         service: FashionRecommendationPipeline = request.app.state.search_service
         vector = service.retriever.encode_text(["test"])
         result["clip"] = f"ok (dim={len(vector[0].tolist())})"
-    except Exception as exc:
-        result["clip"] = f"error: {exc}"
+    except Exception:
+        logger.exception("CLIP status check failed")
+        result["clip"] = "error"
 
     result["gemini_key_set"] = bool(os.getenv("GEMINI_API_KEY"))
     result["supabase_url_set"] = bool(os.getenv("SUPABASE_URL"))
@@ -129,10 +167,7 @@ def search(
         raise HTTPException(status_code=400, detail="Invalid table filter.")
 
     if image:
-        image_mime_type = image.content_type or "image/jpeg"
-        if not image_mime_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="image must be an image file.")
-        image_bytes = image.file.read()
+        image_bytes, image_mime_type = read_image_upload(image)
 
     if not normalized_query and not image_bytes:
         raise HTTPException(status_code=400, detail="query or image is required.")
@@ -156,11 +191,17 @@ def search(
             )
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.info("Invalid recommendation request: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid search request.") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.exception("Recommendation service failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Recommendation service is temporarily unavailable.",
+        ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Internal error: {exc}") from exc
+        logger.exception("Unexpected recommendation search failure")
+        raise HTTPException(status_code=500, detail="Internal server error.") from exc
 
     return {
         "mode": PIPELINE_MODE,
@@ -203,22 +244,27 @@ def analyze(
     image_input: UploadFile | None = File(None),
 ) -> dict[str, Any]:
     """VLM으로 텍스트/이미지를 분석하여 속성 추론"""
+    image_path: str | None = None
     try:
-        # 이미지 경로 처리
-        image_path = None
         if image_input:
-            # 임시 이미지 저장 (실제로는 메모리에서 처리 권장)
-            import tempfile
+            image_bytes, _ = read_image_upload(image_input)
             with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                tmp.write(image_input.file.read())
+                tmp.write(image_bytes)
                 image_path = tmp.name
 
-        # VLM 추론 실행
         result = analyze_fashion_intent(text_input, image_path)
         return {"status": "success", "inferred_attributes": result}
-
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Analysis error: {exc}") from exc
+        logger.exception("Fashion intent analysis failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Fashion intent analysis failed.",
+        ) from exc
+    finally:
+        if image_path:
+            Path(image_path).unlink(missing_ok=True)
 
 
 @app.post("/retrieve")
@@ -237,4 +283,5 @@ def retrieve(request_body: dict) -> dict[str, Any]:
         }
 
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Retrieval error: {exc}") from exc
+        logger.exception("Product retrieval failed")
+        raise HTTPException(status_code=500, detail="Product retrieval failed.") from exc

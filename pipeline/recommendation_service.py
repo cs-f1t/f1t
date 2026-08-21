@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import urllib.parse
@@ -33,6 +34,8 @@ from .target_description.target_description_generation import (
 )
 from .vector_db_client import SupabaseVectorSearchClient
 
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TOP_K = 3
 DEFAULT_RECOMMENDATION_COUNT = 10
@@ -259,11 +262,12 @@ class FashionRecommendationPipeline:
                         "strategy": "rpc_vector_search",
                         "strict_candidate_count": 0,
                     }
-            except Exception as exc:
+            except Exception:
+                logger.exception("Intent-based candidate prefilter failed")
                 pipeline_metadata["candidate_selection"] = {
                     "status": "fallback_prefilter_error",
                     "strategy": "rpc_vector_search",
-                    "error": str(exc),
+                    "error_code": "candidate_prefilter_failed",
                 }
 
         if results is None:
@@ -383,6 +387,7 @@ class FashionRecommendationPipeline:
 
         # Supabase 동시 연결 한도로 인해 순차 검색
         table_results = []
+        failed_tables: list[str] = []
         for table in sorted(VALID_TABLES):
             try:
                 rows = self.vector_search.search(
@@ -393,7 +398,13 @@ class FashionRecommendationPipeline:
                 )
                 table_results.append(rows)
             except Exception:
-                table_results.append([])
+                logger.exception("Vector search failed for table %s", table)
+                failed_tables.append(table)
+
+        if failed_tables:
+            raise RuntimeError(
+                "일부 상품 카테고리 검색에 실패했습니다. 잠시 후 다시 시도해주세요."
+            )
 
         merged = [row for rows in table_results for row in rows]
         if not merged:
