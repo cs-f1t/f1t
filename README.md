@@ -1,5 +1,7 @@
 # F1T — Fashion Intention Translator
 
+[![CI](https://github.com/cs-f1t/f1t/actions/workflows/ci.yml/badge.svg)](https://github.com/cs-f1t/f1t/actions/workflows/ci.yml)
+
 > 자연어 요청과 참고 이미지를 함께 해석해, 사용자가 원하는 조건에 가까운 패션 상품과 추천 이유를 제공하는 멀티모달 검색 시스템입니다.
 
 <p align="center">
@@ -199,7 +201,7 @@ HNSW ef_search  = 100
 ## 📁 저장소 구조
 
 ```text
-f1t_clean_publish/
+f1t/
 ├── backend/                    # FastAPI 엔드포인트와 요청·응답 처리
 ├── pipeline/
 │   ├── intent/                 # 자연어 의도 및 명시 속성 추출
@@ -219,8 +221,8 @@ f1t_clean_publish/
 
 ```bash
 cd <프로젝트를 받을 상위 폴더>
-git clone https://github.com/cs-f1t/f1t_clean.git
-cd f1t_clean
+git clone https://github.com/cs-f1t/f1t.git
+cd f1t
 ```
 
 ### 2. 백엔드 환경 구성
@@ -239,7 +241,10 @@ GEMINI_API_KEY=
 SUPABASE_URL=
 SUPABASE_KEY=
 FRONTEND_ORIGINS=http://localhost:5173
+MAX_IMAGE_BYTES=8388608
 ```
+
+`MAX_IMAGE_BYTES`는 API가 허용하는 이미지 한 장의 최대 크기이며 기본값은 8 MiB입니다.
 
 ### 3. 프론트엔드 환경 구성
 

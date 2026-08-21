@@ -90,7 +90,7 @@ conda activate f1t
 pip install -r pipeline/requirements.txt
 cd frontend && npm install && cd ..
 
-# 3. 백엔드 실행 (f1t_new/ 루트에서)
+# 3. 백엔드 실행 (저장소 루트에서)
 uvicorn backend.api:app --host 0.0.0.0 --port 8000 --reload
 
 # 4. 프론트엔드 실행 (다른 터미널)
