@@ -1,0 +1,35 @@
+{
+  "status": "preliminary_only",
+  "scope": "synthetic CPU-only exact cosine similarity and Top-10 selection; excludes SQL, network, HNSW traversal, VLM, and query embedding generation",
+  "query_source": [
+    "pipeline/tests/intent_analysis_results.json",
+    "pipeline/tests/simple_test/simple_test_results_gemini.json",
+    "pipeline/tests/simple_test/image_test_results_gemini.json"
+  ],
+  "query_count": 54,
+  "repetitions": 5,
+  "samples_per_method": 270,
+  "embedding_dimensions": 768,
+  "full_scan_candidates": 19833,
+  "reduced_scan_candidates": 2707,
+  "candidate_reduction_pct": 86.35103110976655,
+  "full_scan_ms": {
+    "mean": 21.591437799999998,
+    "median": 16.3444165,
+    "p95": 54.546699999999994
+  },
+  "reduced_scan_ms": {
+    "mean": 2.8412756296296293,
+    "median": 2.0547705,
+    "p95": 6.5463499999999915
+  },
+  "paired_mean_saved_ms": 18.75016217037037,
+  "mean_speedup": 7.599205643703959,
+  "mean_latency_reduction_pct": 86.84072984880316,
+  "limitations": [
+    "The configured Supabase project hostname returns DNS NXDOMAIN, so real product embeddings could not be retrieved.",
+    "The configured Railway deployment returns Application not found.",
+    "Synthetic deterministic vectors were used; these results quantify only the effect of reducing cosine comparisons.",
+    "This result must not be reported as end-to-end production search latency."
+  ]
+}
