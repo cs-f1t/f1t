@@ -421,10 +421,8 @@ function App() {
     previousTop: number
   } | null>(null)
   const requestIdRef = useRef(0)
-  const searchDelayRef = useRef<number | null>(null)
   const searchCompleteDelayRef = useRef<number | null>(null)
   const searchCompleteHideDelayRef = useRef<number | null>(null)
-  const shouldShowSearchCompleteRef = useRef(false)
   const [activeModal, setActiveModal] = useState<ModalPageId | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [activeCategoryId, setActiveCategoryId] = useState('all')
@@ -690,30 +688,6 @@ function App() {
             })
           }
 
-          if (!append && shouldShowSearchCompleteRef.current) {
-            shouldShowSearchCompleteRef.current = false
-            setIsUnderstandingRequest(false)
-            setIsSearchCompleteVisible(true)
-
-            if (searchCompleteDelayRef.current) {
-              window.clearTimeout(searchCompleteDelayRef.current)
-            }
-
-            if (searchCompleteHideDelayRef.current) {
-              window.clearTimeout(searchCompleteHideDelayRef.current)
-            }
-
-            searchCompleteDelayRef.current = window.setTimeout(() => {
-              resultsSectionRef.current?.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start',
-              })
-            }, 300)
-
-            searchCompleteHideDelayRef.current = window.setTimeout(() => {
-              setIsSearchCompleteVisible(false)
-            }, 700)
-          }
         }
       } catch (error) {
         if (requestId === requestIdRef.current) {
@@ -815,10 +789,6 @@ function App() {
 
   useEffect(
     () => () => {
-      if (searchDelayRef.current) {
-        window.clearTimeout(searchDelayRef.current)
-      }
-
       if (searchCompleteDelayRef.current) {
         window.clearTimeout(searchCompleteDelayRef.current)
       }
@@ -1046,7 +1016,6 @@ function App() {
         return
       }
 
-      shouldShowSearchCompleteRef.current = false
       setSubmittedQuery(queryText)
       setSubmittedHadImage(Boolean(imageFile))
       setBaselineSearchResponse(response)
@@ -1108,10 +1077,6 @@ function App() {
 
   function handleSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault()
-
-    if (searchDelayRef.current) {
-      window.clearTimeout(searchDelayRef.current)
-    }
 
     if (searchCompleteDelayRef.current) {
       window.clearTimeout(searchCompleteDelayRef.current)
@@ -1209,10 +1174,6 @@ function App() {
   }
 
   function handleHomeClick() {
-    if (searchDelayRef.current) {
-      window.clearTimeout(searchDelayRef.current)
-    }
-
     if (searchCompleteDelayRef.current) {
       window.clearTimeout(searchCompleteDelayRef.current)
     }
@@ -1221,7 +1182,6 @@ function App() {
       window.clearTimeout(searchCompleteHideDelayRef.current)
     }
 
-    shouldShowSearchCompleteRef.current = false
     setActiveModal(null)
     setIsSidebarOpen(false)
     setActiveCategoryId(allCategory.id)
@@ -1241,10 +1201,6 @@ function App() {
       return
     }
 
-    if (searchDelayRef.current) {
-      window.clearTimeout(searchDelayRef.current)
-    }
-
     if (searchCompleteDelayRef.current) {
       window.clearTimeout(searchCompleteDelayRef.current)
     }
@@ -1253,7 +1209,6 @@ function App() {
       window.clearTimeout(searchCompleteHideDelayRef.current)
     }
 
-    shouldShowSearchCompleteRef.current = false
     setActiveModal(pageId)
     setIsSidebarOpen(false)
     setIsUnderstandingRequest(false)
