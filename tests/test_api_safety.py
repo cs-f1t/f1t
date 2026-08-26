@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -43,29 +43,38 @@ def test_image_upload_rejects_oversized_content(monkeypatch: pytest.MonkeyPatch)
     assert exc_info.value.status_code == 413
 
 
-def test_analyze_removes_temporary_image(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured_path: Path | None = None
+def test_analyze_passes_image_bytes_without_a_temporary_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
 
-    def fake_analyze(_text: str, image_path: str | None) -> dict[str, str]:
-        nonlocal captured_path
-        captured_path = Path(image_path or "")
-        assert captured_path.exists()
-        return {"category": "outer"}
+    def fake_extract_conservative_metadata(**kwargs: object) -> SimpleNamespace:
+        captured.update(kwargs)
+        attributes = SimpleNamespace(to_dict=lambda: {"category": "outer"})
+        return SimpleNamespace(attributes=attributes)
 
-    monkeypatch.setattr(api, "analyze_fashion_intent", fake_analyze)
+    monkeypatch.setattr(
+        api, "extract_conservative_metadata", fake_extract_conservative_metadata
+    )
 
     response = api.analyze("find a jacket", make_upload(b"image-bytes"))
 
-    assert response["status"] == "success"
-    assert captured_path is not None
-    assert not captured_path.exists()
+    assert response == {
+        "status": "success",
+        "inferred_attributes": {"category": "outer"},
+    }
+    assert captured == {
+        "query": "find a jacket",
+        "image_bytes": b"image-bytes",
+        "image_mime_type": "image/jpeg",
+    }
 
 
 def test_analyze_hides_internal_error_details(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_analysis(_text: str, _image_path: str | None) -> None:
+    def fail_analysis(**_kwargs: object) -> None:
         raise RuntimeError("private provider credential detail")
 
-    monkeypatch.setattr(api, "analyze_fashion_intent", fail_analysis)
+    monkeypatch.setattr(api, "extract_conservative_metadata", fail_analysis)
 
     with pytest.raises(HTTPException) as exc_info:
         api.analyze("find a jacket", None)

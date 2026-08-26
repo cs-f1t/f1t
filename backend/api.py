@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -21,10 +19,11 @@ from pipeline.recommendation_service import (
     needs_reference_image,
 )
 from pipeline.intent.intent_extraction import (
-    analyze_fashion_intent,
+    extract_conservative_metadata,
     resolve_intent_model,
 )
 from pipeline.retrieval.candidate_selection import retrieve_products
+from pipeline.retrieval.target_description_retrieval import GEMINI_EMBEDDING_MODEL
 from pipeline.target_description.target_description_generation import (
     OPENAI_MODEL_NAME,
     QWEN_FALLBACK_MODEL_NAME,
@@ -39,34 +38,47 @@ DEFAULT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 def max_image_bytes_from_env() -> int:
-    raw_value = os.getenv("MAX_IMAGE_BYTES", str(DEFAULT_MAX_IMAGE_BYTES))
+    raw_value = os.getenv("MAX_IMAGE_BYTES")
+    if raw_value is None:
+        return DEFAULT_MAX_IMAGE_BYTES
+
     try:
         value = int(raw_value)
     except ValueError:
-        logger.warning("Invalid MAX_IMAGE_BYTES=%r; using 8 MiB", raw_value)
+        logger.warning("Ignoring invalid MAX_IMAGE_BYTES value")
         return DEFAULT_MAX_IMAGE_BYTES
+
     if value < 1:
-        logger.warning("MAX_IMAGE_BYTES must be positive; using 8 MiB")
+        logger.warning("Ignoring non-positive MAX_IMAGE_BYTES value")
         return DEFAULT_MAX_IMAGE_BYTES
     return value
 
 
 MAX_IMAGE_BYTES = max_image_bytes_from_env()
+SUPPORTED_IMAGE_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+}
 
 
-def read_image_upload(upload: UploadFile) -> tuple[bytes, str]:
-    """Read a bounded image upload without exposing server memory to unbounded input."""
-    mime_type = upload.content_type or "image/jpeg"
-    if not mime_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="image must be an image file.")
+def read_image_upload(upload: UploadFile | None) -> tuple[bytes | None, str | None]:
+    if upload is None:
+        return None, None
+
+    image_mime_type = upload.content_type or ""
+    if image_mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="image must be a supported image file.",
+        )
 
     image_bytes = upload.file.read(MAX_IMAGE_BYTES + 1)
     if len(image_bytes) > MAX_IMAGE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"image must be {MAX_IMAGE_BYTES // (1024 * 1024)} MB or smaller.",
-        )
-    return image_bytes, mime_type
+        raise HTTPException(status_code=413, detail="image file is too large.")
+
+    return image_bytes, image_mime_type
 
 
 def parse_origins() -> list[str]:
@@ -106,15 +118,17 @@ def health() -> dict[str, str]:
 def status_check(request: Request) -> dict:
     result: dict = {}
 
-    clip_model = os.getenv("CLIP_MODEL", "ViT-B-32")
-    result["clip_model"] = clip_model
+    result["embedding_model"] = os.getenv(
+        "GEMINI_EMBEDDING_MODEL",
+        GEMINI_EMBEDDING_MODEL,
+    )
     try:
         service: FashionRecommendationPipeline = request.app.state.search_service
         vector = service.retriever.encode_text(["test"])
-        result["clip"] = f"ok (dim={len(vector[0].tolist())})"
+        result["embedding"] = f"ok (dim={len(vector[0].tolist())})"
     except Exception:
-        logger.exception("CLIP status check failed")
-        result["clip"] = "error"
+        logger.exception("Embedding status check failed")
+        result["embedding"] = "error"
 
     result["gemini_key_set"] = bool(os.getenv("GEMINI_API_KEY"))
     result["supabase_url_set"] = bool(os.getenv("SUPABASE_URL"))
@@ -154,9 +168,6 @@ def search(
     table_filter = (table or "").strip() or None
     category2_filter = (category2 or "").strip() or None
     category2_keyword_filter = (category2_keyword or "").strip() or None
-    image_bytes = None
-    image_mime_type = None
-
     if top_k < 1 or top_k > MAX_TOP_K:
         raise HTTPException(
             status_code=400,
@@ -166,8 +177,7 @@ def search(
     if table_filter and table_filter not in VALID_TABLES:
         raise HTTPException(status_code=400, detail="Invalid table filter.")
 
-    if image:
-        image_bytes, image_mime_type = read_image_upload(image)
+    image_bytes, image_mime_type = read_image_upload(image)
 
     if not normalized_query and not image_bytes:
         raise HTTPException(status_code=400, detail="query or image is required.")
@@ -194,13 +204,13 @@ def search(
         logger.info("Invalid recommendation request: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid search request.") from exc
     except RuntimeError as exc:
-        logger.exception("Recommendation service failed")
+        logger.exception("Search pipeline runtime failure")
         raise HTTPException(
             status_code=502,
-            detail="Recommendation service is temporarily unavailable.",
+            detail="Search service is temporarily unavailable.",
         ) from exc
     except Exception as exc:
-        logger.exception("Unexpected recommendation search failure")
+        logger.exception("Unhandled search failure")
         raise HTTPException(status_code=500, detail="Internal server error.") from exc
 
     return {
@@ -243,38 +253,29 @@ def analyze(
     text_input: str = Form(...),
     image_input: UploadFile | None = File(None),
 ) -> dict[str, Any]:
-    """VLM으로 텍스트/이미지를 분석하여 속성 추론"""
-    image_path: str | None = None
     try:
-        if image_input:
-            image_bytes, _ = read_image_upload(image_input)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                tmp.write(image_bytes)
-                image_path = tmp.name
+        image_bytes, image_mime_type = read_image_upload(image_input)
+        extraction = extract_conservative_metadata(
+            query=text_input,
+            image_bytes=image_bytes,
+            image_mime_type=image_mime_type,
+        )
+        return {
+            "status": "success",
+            "inferred_attributes": extraction.attributes.to_dict(),
+        }
 
-        result = analyze_fashion_intent(text_input, image_path)
-        return {"status": "success", "inferred_attributes": result}
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Fashion intent analysis failed")
-        raise HTTPException(
-            status_code=500,
-            detail="Fashion intent analysis failed.",
-        ) from exc
-    finally:
-        if image_path:
-            Path(image_path).unlink(missing_ok=True)
+        logger.exception("Unhandled analysis failure")
+        raise HTTPException(status_code=500, detail="Internal server error.") from exc
 
 
 @app.post("/retrieve")
 def retrieve(request_body: dict) -> dict[str, Any]:
-    """추론된 속성을 기반으로 상품 검색"""
     try:
-        # JSON Body에서 inferred_attributes 추출
         inferred_attributes = request_body.get("inferred_attributes", {})
-
-        # Retrieval 실행
         products = retrieve_products(inferred_attributes)
         return {
             "status": "success",
@@ -283,5 +284,5 @@ def retrieve(request_body: dict) -> dict[str, Any]:
         }
 
     except Exception as exc:
-        logger.exception("Product retrieval failed")
-        raise HTTPException(status_code=500, detail="Product retrieval failed.") from exc
+        logger.exception("Unhandled retrieval failure")
+        raise HTTPException(status_code=500, detail="Internal server error.") from exc

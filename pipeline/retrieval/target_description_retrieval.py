@@ -6,7 +6,7 @@ for pgvector similarity search in Supabase.
 from __future__ import annotations
 
 import os
-from typing import Any, List
+from typing import Any
 
 
 GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
@@ -43,7 +43,7 @@ class GeminiEmbeddingClient:
         )
         self._config = types.EmbedContentConfig(output_dimensionality=dim)
 
-    def encode_text(self, captions: List[str]) -> Any:
+    def encode_text(self, captions: list[str]) -> Any:
         import numpy as np
 
         vectors = []
@@ -62,19 +62,20 @@ class RetrieveModule:
 
     def __init__(
         self,
-        # Legacy CLIP params accepted but ignored — kept for call-site compat
         clip_model_name: str = "ViT-B-32",
         pretrained: str = "openai",
         hf_api_key: str | None = None,
         api_key: str | None = None,
         model: str | None = None,
         dimensionality: int | None = None,
+        **_legacy_options: Any,
     ):
+        _ = (clip_model_name, pretrained, hf_api_key, _legacy_options)
         self._backend = GeminiEmbeddingClient(
             api_key=api_key,
             model=model,
             dimensionality=dimensionality,
         )
 
-    def encode_text(self, captions: List[str]) -> Any:
+    def encode_text(self, captions: list[str]) -> Any:
         return self._backend.encode_text(captions)
