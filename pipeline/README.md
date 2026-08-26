@@ -1,17 +1,16 @@
 # F1T 패션 추천 파이프라인
 
-패션 검색 추천의 핵심 로직이 담긴 폴더예요.  
-HTTP API는 `../backend/`에 있어요. 이 배포용 스냅샷에는 런타임에 필요하지 않은 실험/데이터 구축 자산은 포함하지 않습니다.
+패션 검색과 추천의 핵심 로직이 담긴 폴더입니다. HTTP API는 `../backend/`에 있습니다. 이 배포용 스냅샷에는 런타임에 필요하지 않은 실험 및 데이터 구축 자산을 포함하지 않습니다.
 
 ---
 
 ## 파이프라인 구조
 
-진입점은 `recommendation_service.py`이며, 아래 5단계를 순서대로 실행해요.
+진입점은 `recommendation_service.py`이며, 아래 단계를 조율합니다.
 
 | 파일 | 역할 |
 |---|---|
-| `intent/intent_extraction.py` | Gemini VLM으로 사용자가 명시한 속성만 추출 (추론 금지) |
+| `intent/intent_extraction.py` | 사용자가 언급한 속성을 추출하고, 의류 종류가 명확할 때만 카테고리 도출 |
 | `retrieval/candidate_selection.py` | 속성 기반 Supabase 테이블 라우팅 + SQL 후보 필터링 |
 | `target_description/target_description_generation.py` | Gemini로 검색용 영문 target description 생성 |
 | `retrieval/target_description_retrieval.py` | gemini-embedding-2로 텍스트 → 768차원 벡터 인코딩 |
@@ -46,13 +45,11 @@ HTTP API는 `../backend/`에 있어요. 이 배포용 스냅샷에는 런타임�
 API 응답 반환
 ```
 
-베이스라인과의 차이: 베이스라인은 target description 생성부터 시작하지만, 우리 파이프라인은 메타데이터로 먼저 범위를 좁혀 정확도를 높여요.
-
 ---
 
 ## 유사도 스코어 계산
 
-벡터 검색 결과의 최종 유사도는 두 가지 임베딩의 가중 합산이에요:
+벡터 검색 결과의 최종 유사도는 두 임베딩의 가중 합으로 계산합니다.
 
 ```
 최종 점수 = 0.8 × 이미지 유사도 + 0.2 × fabric 유사도
@@ -60,9 +57,9 @@ API 응답 반환
 
 - **이미지 유사도**: `gemini_image_embedding_768` — 상품 이미지 vs. target description 텍스트
 - **fabric 유사도**: `gemini_fabric_text_embedding_768` — 상품 소재 설명 vs. 사용자 요청 소재
-- fabric 속성이 없거나 임베딩이 없으면 이미지 유사도 100%로 폴백
+- fabric 속성이 없거나 임베딩이 없으면 이미지 유사도만 사용
 
-가중치는 `recommendation_service.py`의 `_rank_stored_gemini_vectors(fabric_weight=0.2)` 및 Supabase RPC 함수 `match_fashion_items_768`에서 적용돼요.
+가중치는 `recommendation_service.py`의 `_rank_stored_gemini_vectors(fabric_weight=0.2)` 및 Supabase RPC 함수 `match_fashion_items_768`에서 적용합니다.
 
 ### 실제 검색 경로
 
@@ -90,7 +87,7 @@ conda activate f1t
 pip install -r pipeline/requirements.txt
 cd frontend && npm install && cd ..
 
-# 3. 백엔드 실행 (저장소 루트에서)
+# 3. 백엔드 실행 (f1t_clean/ 루트에서)
 uvicorn backend.api:app --host 0.0.0.0 --port 8000 --reload
 
 # 4. 프론트엔드 실행 (다른 터미널)
@@ -152,7 +149,7 @@ cd frontend && npm run dev
 
 ## Supabase 설정
 
-벡터 검색을 위해 다음 세 가지가 Supabase에 설정되어 있어야 해요:
+벡터 검색을 위해 다음 세 항목을 Supabase에 설정해야 합니다.
 
 **1. 이미지 HNSW 인덱스** (3개 테이블 모두):
 ```sql
