@@ -1,18 +1,12 @@
-# 모델 호출을 대체해 업로드 전달과 API 응답 형식을 검사한다.
 from io import BytesIO
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 from fastapi import HTTPException, UploadFile
 from starlette.datastructures import Headers
 
 from backend import api
-from backend.request_limits import RequestLimiter
-
-
-@pytest.fixture(autouse=True)
-def fresh_model_request_limits(monkeypatch):
-    monkeypatch.setattr(api, "request_limiter", RequestLimiter())
 
 
 def test_analyze_passes_uploaded_image_without_temporary_file(monkeypatch) -> None:
@@ -51,8 +45,8 @@ def test_analyze_passes_uploaded_image_without_temporary_file(monkeypatch) -> No
 def test_status_reports_the_active_embedding_model(monkeypatch) -> None:
     class FakeRetriever:
         @staticmethod
-        def encode_text(_captions: list[str]):
-            raise AssertionError("Status must not call the embedding model")
+        def encode_text(_captions: list[str]) -> np.ndarray:
+            return np.zeros((1, 768), dtype=np.float32)
 
     request = SimpleNamespace(
         app=SimpleNamespace(
@@ -66,8 +60,7 @@ def test_status_reports_the_active_embedding_model(monkeypatch) -> None:
     result = api.status_check(request)
 
     assert result["embedding_model"] == "gemini-embedding-test"
-    assert result["embedding"] == "not_checked"
-    assert result["check_mode"] == "configuration_only"
+    assert result["embedding"] == "ok (dim=768)"
     assert "clip" not in result
     assert "clip_model" not in result
 
@@ -159,7 +152,7 @@ def test_analyze_hides_internal_error(monkeypatch) -> None:
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        api.analyze(text_input="검은색으로", image_input=None)
+        api.analyze(text_input="검은색으로")
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Internal server error."
